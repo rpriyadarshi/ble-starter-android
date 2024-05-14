@@ -24,6 +24,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.ActivityNotFoundException
@@ -32,8 +33,12 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.ParcelUuid
 import android.provider.Settings
+import android.view.View
 import android.widget.Toast
+import android.widget.ArrayAdapter
+import android.widget.AdapterView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.UiThread
 import androidx.appcompat.app.AppCompatActivity
@@ -45,6 +50,7 @@ import com.punchthrough.blestarterappandroid.ble.ConnectionEventListener
 import com.punchthrough.blestarterappandroid.ble.ConnectionManager
 import com.punchthrough.blestarterappandroid.databinding.ActivityMainBinding
 import timber.log.Timber
+import java.util.UUID
 
 private const val PERMISSION_REQUEST_CODE = 1
 
@@ -112,6 +118,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.scanButton.setOnClickListener { if (isScanning) stopBleScan() else startBleScan() }
         setupRecyclerView()
+        setupSpinner()
     }
 
     override fun onResume() {
@@ -201,13 +208,44 @@ class MainActivity : AppCompatActivity() {
     }
 
     @SuppressLint("MissingPermission, NotifyDataSetChanged") // Check performed inside extension fun
+    private fun startBleScanNoFilter() {
+        bleScanner.startScan(null, scanSettings, scanCallback)
+    }
+
+    @SuppressLint("MissingPermission, NotifyDataSetChanged") // Check performed inside extension fun
+    private fun startBleScanUUIDFilter(uuid: String) {
+        // devices UUID service
+        val parcelUuid = ParcelUuid(UUID.fromString(uuid))
+        val scanFilter = ScanFilter.Builder()
+            .setServiceUuid(parcelUuid)
+            .build()
+        val scanFilterList = listOf(scanFilter)
+
+        // Scanning Started
+        bleScanner.startScan(scanFilterList, scanSettings, scanCallback)
+    }
+
+    @SuppressLint("MissingPermission, NotifyDataSetChanged") // Check performed inside extension fun
     private fun startBleScan() {
         if (!hasRequiredBluetoothPermissions()) {
             requestRelevantBluetoothPermissions(PERMISSION_REQUEST_CODE)
         } else {
             scanResults.clear()
             scanResultAdapter.notifyDataSetChanged()
-            bleScanner.startScan(null, scanSettings, scanCallback)
+
+            val spinner = binding.spinner
+            val deviceValues = getResources().getStringArray(R.array.device_filter)
+            if (spinner.selectedItem.equals(deviceValues[getResources().getInteger(R.integer.all)])) { // All
+                startBleScanNoFilter()
+            } else if (spinner.selectedItem.equals(deviceValues[getResources().getInteger(R.integer.wurth)])) { // Wurth
+                val uuid = getString(R.string.PROTEUS_BLE_SERVICE)
+                startBleScanUUIDFilter(uuid)
+            } else if (spinner.selectedItem.equals(deviceValues[getResources().getInteger(R.integer.microchip)])) { // Microchip
+                val uuid = getString(R.string.MICROCHIP_BLE_SERVICE)
+                startBleScanUUIDFilter(uuid)
+            } else {
+                startBleScanNoFilter()
+            }
             isScanning = true
         }
     }
@@ -234,6 +272,41 @@ class MainActivity : AppCompatActivity() {
                 if (it is SimpleItemAnimator) {
                     it.supportsChangeAnimations = false
                 }
+            }
+        }
+    }
+
+    private fun setupSpinner() {
+        val spinner = binding.spinner
+        // Create an ArrayAdapter using the string array and a default spinner layout.
+        ArrayAdapter.createFromResource(
+            this,
+            R.array.device_filter,
+            android.R.layout.simple_spinner_item
+        ).also { adapter ->
+            // Specify the layout to use when the list of choices appears.
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            // Apply the adapter to the spinner.
+            spinner.adapter = adapter
+        }
+
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>,
+                view: View,
+                position: Int,
+                id: Long
+            ) {
+                stopBleScan()
+                Toast.makeText(
+                    this@MainActivity,
+                    spinner.selectedItem.toString(),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>) {
+                // Code to perform some action when nothing is selected
             }
         }
     }
